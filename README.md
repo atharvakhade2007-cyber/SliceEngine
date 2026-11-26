@@ -7,18 +7,14 @@
 ### On Windows
 
 ```powershell
-# 1. Install Chocolatey (if not already installed)
-@echo off
-powershell -ExecutionPolicy Bypass -Command "iex ((Get-Command pwsh -ArgumentList '-nop,new-item').Scope.Properties['Item'][1].Definition)" || true
-
-# 2. Install dependencies
+# 1. Install dependencies (ffmpeg includes ffprobe)
 winget install Gyan.FFmpeg   # or download ffmpeg from https://ffmpeg.org/download.html and add to PATH
 pip install yt-dlp
 
-# 3. Start the engine
+# 2. Start the engine
 python engine.py
 
-# 4. Open your browser
+# 3. Open your browser
 #    http://127.0.0.1:4173
 ```
 
@@ -49,6 +45,17 @@ python3 engine.py
 # 3. Open your browser
 #    http://127.0.0.1:4173
 ```
+
+## How It Works
+
+SliceEngine runs 100% locally on your machine (no cloud servers or external AI/LLM APIs required):
+
+1. **Web UI (`index.html`, `styles.css`, `app.js`)**: Serves the Studio, Live, and Library tabs, interactive facecam box editor, and clip previews in your browser.
+2. **Local Engine (`engine.py`)**: A lightweight Python HTTP server on `http://127.0.0.1:4173` that orchestrates `yt-dlp` and `ffmpeg`:
+   - **Highlight scoring**: Extracts the audio track and scores loudness peaks (`ffmpeg` RMS energy) to suggest clip timestamps—no LLM needed.
+   - **Facecam detection**: Samples pairs of grayscale frames and compares motion across corners to guess where your webcam is placed.
+   - **Approval & 9:16 rendering**: Pauses for you to confirm or adjust the facecam box and layout (`auto`, `gameplay`, `split`, `facecam`, `full`), then crops and encodes `1080x1920` MP4 clips into `clips/`.
+   - **Live mode**: Connects to live stream edges via `yt-dlp` + `ffmpeg`, takes periodic frames, buffers requested moments, and renders clips after you approve them.
 
 ## Features
 
