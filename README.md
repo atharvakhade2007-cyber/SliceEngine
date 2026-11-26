@@ -149,7 +149,7 @@ yt-dlp>=2024.2.0      # video extraction
 
 ```bash
 # 1. Clone / ensure you have the files
-git clone <repo-url>
+git clone https://github.com/atharvakhade2007-cyber/SliceEngine
 cd SliceEngine
 
 # 2. Install system deps
