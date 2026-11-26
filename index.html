@@ -1,0 +1,523 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SliceEngine — vertical 9:16 clips from long videos</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <a class="brand" href="#studio" data-goto="studio">
+        <span class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M5 4l6 8-6 8"/>
+            <path d="M13 4l6 8-6 8"/>
+          </svg>
+        </span>
+        <span class="brand-name">Slice<em>Engine</em></span>
+      </a>
+
+      <nav class="tabs" role="tablist" aria-label="Views">
+        <button class="tab" type="button" role="tab" data-view="studio" aria-selected="true">Studio</button>
+        <button class="tab" type="button" role="tab" data-view="live" aria-selected="false">
+          Live
+          <span class="tab-count" id="live-clips-count">0</span>
+        </button>
+        <button class="tab" type="button" role="tab" data-view="library" aria-selected="false">
+          Library
+          <span class="tab-count" data-lib-count>0</span>
+        </button>
+      </nav>
+
+      <div class="topbar-actions">
+        <span class="engine-badge" id="engine-badge" data-mode="demo" title="Checking local engine…">
+          <i></i>
+          <b>Demo mode</b>
+        </span>
+
+        <label class="master" title="Toggle captions on or off">
+          <input class="sr-toggle" type="checkbox" data-captions checked>
+          <span class="switch" aria-hidden="true"></span>
+          <span class="master-label">Captions <b data-caption-state>On</b></span>
+        </label>
+
+        <button class="notif-btn" id="notif-bell" type="button" aria-label="Notifications" aria-expanded="false" aria-controls="notif-panel">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/>
+            <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+          </svg>
+          <span class="notif-count" id="notif-count" hidden>0</span>
+        </button>
+      </div>
+    </header>
+
+    <div class="notif-panel" id="notif-panel" role="dialog" aria-label="Notifications" hidden>
+      <div class="notif-head">
+        <strong>Notifications</strong>
+        <button class="link-btn" id="notif-clear" type="button">Clear</button>
+      </div>
+      <ul class="notif-list" id="notif-list"></ul>
+      <p class="notif-empty" id="notif-empty">No notifications yet.</p>
+    </div>
+
+    <main>
+      <!-- ───────────────────────── STUDIO VIEW ───────────────────────── -->
+      <section class="view" id="view-studio">
+        <div class="hero">
+          <div>
+            <h1>Turn long videos into <em>9:16</em> clips.</h1>
+            <p class="sub">Paste a YouTube, Twitch, or Kick link — or drop a local MP4. SliceEngine scores loud moments, frames your facecam, and burns captions.</p>
+          </div>
+          <div class="hero-stats">
+            <div><b>1080×1920</b><span>Vertical MP4</span></div>
+            <div><b>9:16</b><span>Safe guides</span></div>
+            <div><b data-lib-count>0</b><span>Saved clips</span></div>
+          </div>
+        </div>
+
+        <div class="studio-grid">
+          <section class="panel panel-options">
+            <div class="panel-head">
+              <h2>Source</h2>
+              <button class="link-btn" id="reset-source" type="button">Clear</button>
+            </div>
+
+            <div class="source-row">
+              <div class="url-field">
+                <svg class="url-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
+                  <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
+                </svg>
+                <input id="source-url" type="url" placeholder="https://youtube.com/watch?v=... or /live/..." autocomplete="off">
+                <span class="source-kind" id="source-kind" data-known="false">Link</span>
+              </div>
+              <label class="btn ghost file-btn" title="Upload a local video file">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                  <polyline points="17 8 12 3 7 8"/>
+                  <line x1="12" y1="3" x2="12" y2="15"/>
+                </svg>
+                <span>File</span>
+                <input id="file-input" type="file" accept="video/*" hidden>
+              </label>
+            </div>
+
+            <div class="file-chip" id="file-chip" hidden>
+              <span id="file-name"></span>
+              <button id="file-clear" type="button" aria-label="Remove file">&times;</button>
+            </div>
+            <p class="hint" id="source-hint">Videos and past broadcasts work. Live streams go in the Live tab.</p>
+
+            <div class="divider"></div>
+            <p class="group-title">Clip settings</p>
+
+            <div class="field">
+              <label class="field-label" for="preset-select">Platform preset</label>
+              <select id="preset-select">
+                <option value="reels">Instagram Reels (up to 90s)</option>
+                <option value="tiktok">TikTok (up to 180s)</option>
+                <option value="shorts">YouTube Shorts (up to 60s)</option>
+                <option value="custom">Custom</option>
+              </select>
+              <p class="hint tiny" id="preset-note"></p>
+            </div>
+
+            <div class="field">
+              <div class="field-head">
+                <label class="field-label" for="min-length">Min length</label>
+                <output id="min-length-out">30s</output>
+              </div>
+              <input id="min-length" type="range" min="15" max="90" step="5" value="30">
+            </div>
+
+            <div class="field">
+              <div class="field-head">
+                <label class="field-label" for="max-length">Max length</label>
+                <output id="max-length-out">80s</output>
+              </div>
+              <input id="max-length" type="range" min="20" max="180" step="5" value="80">
+            </div>
+
+            <div class="field">
+              <span class="field-label">Clips to cut</span>
+              <div class="segmented" id="clip-count" role="group" aria-label="Number of clips">
+                <button type="button" data-count="1" aria-pressed="false">1</button>
+                <button type="button" data-count="2" aria-pressed="false">2</button>
+                <button type="button" data-count="3" aria-pressed="true">3</button>
+                <button type="button" data-count="4" aria-pressed="false">4</button>
+                <button type="button" data-count="5" aria-pressed="false">5</button>
+              </div>
+            </div>
+
+            <div class="field">
+              <div class="field-head">
+                <label class="field-label" for="layout-select">Framing layout</label>
+                <button class="link-btn" id="open-frame" type="button">Edit facecam box</button>
+              </div>
+              <select id="layout-select">
+                <option value="auto">Auto (detect facecam)</option>
+                <option value="split">Split (facecam top, game bottom)</option>
+                <option value="gameplay">Gameplay + corner facecam</option>
+                <option value="facecam">Facecam focus</option>
+                <option value="full">Full frame (center crop)</option>
+              </select>
+              <p class="hint tiny" id="frame-note"></p>
+            </div>
+
+            <div class="divider"></div>
+            <p class="group-title">Captions</p>
+
+            <div class="caption-card">
+              <div class="caption-card-top">
+                <div>
+                  <b>Auto-captions</b>
+                  <small id="caption-note">Burned into the MP4 video.</small>
+                </div>
+                <label class="master compact">
+                  <input class="sr-toggle" type="checkbox" data-captions checked>
+                  <span class="switch" aria-hidden="true"></span>
+                </label>
+              </div>
+
+              <div id="caption-options">
+                <div class="field tight">
+                  <div class="field-head">
+                    <span class="field-label">Output mode</span>
+                    <output id="caption-mode-out">Burned in</output>
+                  </div>
+                  <div class="segmented wide" id="caption-mode" role="group" aria-label="Caption mode">
+                    <button type="button" data-mode="burn" aria-pressed="true">Burned in</button>
+                    <button type="button" data-mode="srt" aria-pressed="false">Sidecar .srt</button>
+                  </div>
+                </div>
+
+                <div class="field tight">
+                  <label class="field-label" for="lang-select">Language</label>
+                  <select id="lang-select">
+                    <option value="en">English (en)</option>
+                    <option value="es">Spanish (es)</option>
+                    <option value="fr">French (fr)</option>
+                    <option value="de">German (de)</option>
+                    <option value="pt">Portuguese (pt)</option>
+                    <option value="hi">Hindi (hi)</option>
+                    <option value="ja">Japanese (ja)</option>
+                  </select>
+                </div>
+
+                <div class="field tight">
+                  <span class="field-label">Style</span>
+                  <div class="chips" id="style-chips" role="group" aria-label="Caption style">
+                    <button class="style-chip" type="button" data-style="gta" aria-pressed="true" style="--sw:#b7ff2e"><i></i>GTA</button>
+                    <button class="style-chip" type="button" data-style="impact" aria-pressed="false" style="--sw:#ffffff"><i></i>Impact</button>
+                    <button class="style-chip" type="button" data-style="clean" aria-pressed="false" style="--sw:#9aa1b4"><i></i>Clean</button>
+                    <button class="style-chip" type="button" data-style="hormozi" aria-pressed="false" style="--sw:#c6ff3d"><i></i>Hormozi</button>
+                    <button class="style-chip" type="button" data-style="mrbeast" aria-pressed="false" style="--sw:#ffe14d"><i></i>MrBeast</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="make-row">
+              <button class="btn primary" id="make-clips" type="button">Make clips</button>
+            </div>
+            <p class="hint tiny" id="make-hint"></p>
+          </section>
+
+          <section class="panel panel-results">
+            <div class="panel-head">
+              <h2>Clips</h2>
+              <span class="muted" id="results-meta">Nothing yet</span>
+            </div>
+
+            <div class="progress" id="progress" hidden>
+              <div class="progress-top">
+                <span id="stage-label">Starting…</span>
+                <span id="progress-pct">0%</span>
+              </div>
+              <div class="bar"><i id="progress-bar"></i></div>
+              <ul class="stage-list" id="stage-list"></ul>
+              <div class="progress-actions" id="progress-actions" hidden>
+                <button class="btn ghost small" id="review-open" type="button" hidden>Review frames</button>
+                <button class="btn ghost small stop-btn" id="stop-clip" type="button" hidden>Stop</button>
+              </div>
+            </div>
+
+            <div class="empty" id="clips-empty">
+              <div class="empty-art" aria-hidden="true"><span></span><span></span><span></span></div>
+              <b>No clips yet</b>
+              <p>Paste a video link or upload an MP4 on the left, then hit <em>Make clips</em>.</p>
+            </div>
+
+            <div class="clips" id="clips"></div>
+          </section>
+        </div>
+      </section>
+
+      <!-- ───────────────────────── LIVE VIEW ───────────────────────── -->
+      <section class="view" id="view-live" hidden>
+        <div class="view-head">
+          <h1>Clip <em>live streams</em> as they happen.</h1>
+          <p>Paste a live stream URL, watch chat &amp; audio energy, and capture moments with an approval gate before rendering.</p>
+        </div>
+
+        <div class="live-grid">
+          <section class="panel">
+            <div class="panel-head">
+              <h2>Stream</h2>
+              <span class="status" id="live-status" data-state="idle"><i></i>Idle</span>
+            </div>
+
+            <div class="source-row single">
+              <div class="url-field">
+                <svg class="url-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="12" cy="12" r="2"/>
+                  <path d="M16.24 7.76a6 6 0 0 1 0 8.49m-8.48-.01a6 6 0 0 1 0-8.49m11.31-2.82a10 10 0 0 1 0 14.14m-14.14 0a10 10 0 0 1 0-14.14"/>
+                </svg>
+                <input id="live-url" type="url" placeholder="https://youtube.com/live/... or twitch.tv/..." autocomplete="off">
+              </div>
+            </div>
+
+            <div class="make-row" style="margin-bottom:14px;">
+              <button class="btn primary" id="live-start" type="button"><span class="rec-dot"></span>Start watching</button>
+              <button class="btn ghost" id="live-stop" type="button" disabled>Stop</button>
+              <button class="btn ghost" id="live-now" type="button" disabled>Capture now</button>
+            </div>
+
+            <div class="field">
+              <div class="field-head">
+                <label class="field-label" for="live-layout">Layout</label>
+                <button class="link-btn" id="live-frame" type="button">Edit facecam box</button>
+              </div>
+              <select id="live-layout">
+                <option value="auto">Auto (detect facecam)</option>
+                <option value="split">Split (facecam top, game bottom)</option>
+                <option value="gameplay">Gameplay + corner facecam</option>
+                <option value="facecam">Facecam focus</option>
+                <option value="full">Full frame (center crop)</option>
+              </select>
+            </div>
+
+            <div class="switch-row">
+              <div>
+                <b>Auto-clip spikes</b>
+                <small>Queue a clip whenever chat/energy spikes above threshold.</small>
+              </div>
+              <label class="master compact">
+                <input class="sr-toggle" id="live-auto" type="checkbox" checked>
+                <span class="switch" aria-hidden="true"></span>
+              </label>
+            </div>
+
+            <div class="field">
+              <div class="field-head">
+                <label class="field-label" for="live-sensitivity">Spike sensitivity</label>
+                <output id="live-sensitivity-out">2.5σ</output>
+              </div>
+              <input id="live-sensitivity" type="range" min="1.2" max="4.0" step="0.1" value="2.5">
+            </div>
+
+            <div class="field">
+              <div class="field-head">
+                <label class="field-label" for="live-preroll">Clip length</label>
+                <output id="live-preroll-out">24s</output>
+              </div>
+              <input id="live-preroll" type="range" min="10" max="60" step="2" value="24">
+            </div>
+
+            <div class="divider"></div>
+            <div class="watch-head">
+              <b>Watchlist</b>
+              <span class="muted" id="watch-count">0 saved</span>
+            </div>
+            <form class="watch-add" id="watch-form">
+              <input id="watch-input" type="url" placeholder="Save channel or stream URL…">
+              <button class="btn ghost small" type="submit">Add</button>
+            </form>
+            <ul class="watch-list" id="watch-list"></ul>
+          </section>
+
+          <section class="panel">
+            <div class="panel-head">
+              <h2>Live monitor</h2>
+              <span class="muted" id="live-clock">00:00</span>
+            </div>
+
+            <div class="stats">
+              <div><b id="live-chat">0</b><span>Chat / min</span></div>
+              <div><b id="live-viewers">0</b><span>Viewers</span></div>
+              <div><b id="live-peaks">0</b><span>Spikes</span></div>
+              <div><b id="live-meta">No clips</b><span>Captured</span></div>
+            </div>
+
+            <canvas id="live-spark" width="640" height="170"></canvas>
+
+            <p class="log-head">Event log</p>
+            <ul class="live-log" id="live-log">
+              <li class="log-empty">Start watching a stream to see live energy and clip events.</li>
+            </ul>
+          </section>
+        </div>
+
+        <section class="panel live-shots-panel" id="live-shots-panel" hidden>
+          <div class="panel-head">
+            <h2>Stream frames</h2>
+            <span class="muted" id="live-shots-meta">0 frames</span>
+          </div>
+          <div class="review-shots" id="live-shots"></div>
+        </section>
+
+        <section class="panel live-pending-panel" id="live-pending-panel" hidden>
+          <div class="panel-head">
+            <h2>Pending approval</h2>
+            <span class="muted" id="live-pending-meta">0 pending</span>
+          </div>
+          <div class="live-pending" id="live-pending"></div>
+        </section>
+
+        <section class="panel live-results" style="margin-top:18px;">
+          <div class="panel-head">
+            <h2>Live clips</h2>
+            <span class="muted">Rendered from live sessions</span>
+          </div>
+          <div class="empty compact" id="live-empty">
+            <b>No live clips yet</b>
+            <p>Captured clips appear here after you approve them.</p>
+          </div>
+          <div class="clips wide" id="live-clips"></div>
+        </section>
+      </section>
+
+      <!-- ───────────────────────── LIBRARY VIEW ───────────────────────── -->
+      <section class="view" id="view-library" hidden>
+        <div class="view-head">
+          <h1>Saved <em>clips</em> &amp; local storage.</h1>
+          <p><span id="library-count">0 clips</span> saved in your browser library.</p>
+        </div>
+
+        <div class="library-bar">
+          <span class="muted" id="library-meta">0 clips</span>
+          <button class="btn ghost small danger" id="clear-library" type="button" disabled>Clear library</button>
+        </div>
+
+        <div class="empty" id="library-empty">
+          <div class="empty-art" aria-hidden="true"><span></span><span></span><span></span></div>
+          <b>Your library is empty</b>
+          <p>Save clips from Studio or Live to keep them here.</p>
+        </div>
+
+        <div class="clips library-clips" id="library-grid"></div>
+
+        <section class="panel storage-panel">
+          <div class="panel-head">
+            <h2>Disk storage</h2>
+            <span class="muted" id="storage-total">0 B</span>
+          </div>
+          <ul class="storage-list" id="storage-list"></ul>
+          <div class="storage-actions">
+            <button class="btn ghost small" id="storage-refresh" type="button">Refresh</button>
+            <button class="btn ghost small danger" id="storage-clear-all" type="button">Clear cache, clips &amp; uploads</button>
+          </div>
+        </section>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-text">
+        <b>SliceEngine</b> — vertical 9:16 clips from long videos.
+        <span id="engine-footer">Demo mode.</span>
+        Run <code>python engine.py</code> for local <code>yt-dlp</code> + <code>ffmpeg</code> rendering.
+      </div>
+      <button class="btn small coffee-btn" id="coffee-btn" type="button">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M18 8h1a4 4 0 0 1 0 8h-1"/>
+          <path d="M2 8h16v9a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4V8z"/>
+          <line x1="6" y1="1" x2="6" y2="4"/>
+          <line x1="10" y1="1" x2="10" y2="4"/>
+          <line x1="14" y1="1" x2="14" y2="4"/>
+        </svg>
+        Buy me a coffee
+      </button>
+    </footer>
+  </div>
+
+  <!-- ───────────────────────── BUY ME A COFFEE DIALOG ───────────────────────── -->
+  <dialog class="coffee-dialog" id="coffee-dialog">
+    <div class="coffee-head">
+      <div>
+        <h2>Buy me a coffee</h2>
+        <p class="muted">Scan with Samsung Wallet or any UPI app</p>
+      </div>
+      <button class="btn ghost small" id="coffee-close" type="button">Close</button>
+    </div>
+    <div class="coffee-body">
+      <img src="coffee-qr.png" alt="UPI QR code for Atharva Durgesh Khade (atharvakhade2007@pingpay)">
+    </div>
+  </dialog>
+
+  <!-- ───────────────────────── FACECAM / REVIEW DIALOG ───────────────────────── -->
+  <dialog class="frame-dialog" id="frame-dialog">
+    <div class="frame-head">
+      <div>
+        <h2 id="frame-title">Facecam box</h2>
+        <p class="muted" id="frame-sub">Drag the box to frame the webcam. Preview updates for <strong id="frame-preset-name">Reels</strong> safe guides.</p>
+      </div>
+      <div class="frame-head-actions">
+        <button class="btn primary small" id="review-start" type="button" hidden>Start clipping</button>
+        <button class="btn ghost small" id="frame-close" type="button">Close</button>
+      </div>
+    </div>
+
+    <div class="review-strip" id="review-strip" hidden>
+      <span class="frame-side-label">Sampled frames</span>
+      <div class="review-shots" id="review-shots"></div>
+    </div>
+
+    <div class="frame-body">
+      <div class="frame-source">
+        <div class="frame-canvas-wrap">
+          <canvas id="frame-canvas" width="960" height="540"></canvas>
+          <span class="frame-loading" id="frame-loading" hidden>Loading frame…</span>
+        </div>
+        <div class="corner-grid">
+          <button type="button" data-corner="tl" aria-pressed="false">Top-left</button>
+          <button type="button" data-corner="tr" aria-pressed="false">Top-right</button>
+          <button type="button" data-corner="bl" aria-pressed="false">Bottom-left</button>
+          <button type="button" data-corner="br" aria-pressed="false">Bottom-right</button>
+        </div>
+        <p class="frame-readout" id="frame-readout"></p>
+      </div>
+
+      <div class="frame-side">
+        <span class="frame-side-label">9:16 Preview</span>
+        <canvas id="frame-preview" width="270" height="480"></canvas>
+        <div class="frame-actions">
+          <button class="btn ghost small" id="frame-reset" type="button">Reset</button>
+          <button class="btn ghost small" id="frame-full" type="button">Full frame</button>
+        </div>
+        <button class="btn ghost small" id="frame-apply-all" type="button" hidden>Apply box to all</button>
+        <p class="hint tiny" id="review-note"></p>
+      </div>
+    </div>
+
+    <div class="review-foot" id="review-foot" hidden>
+      <div class="review-focus">
+        <span class="frame-side-label">Layout for cut</span>
+        <div class="segmented" id="review-layout" role="group" aria-label="Review layout">
+          <button type="button" data-layout="auto" aria-pressed="true">Auto</button>
+          <button type="button" data-layout="split" aria-pressed="false">Split</button>
+          <button type="button" data-layout="gameplay" aria-pressed="false">Gameplay</button>
+          <button type="button" data-layout="facecam" aria-pressed="false">Facecam</button>
+          <button type="button" data-layout="full" aria-pressed="false">Full</button>
+        </div>
+      </div>
+      <p class="hint tiny">Check the facecam box on each frame before cutting.</p>
+    </div>
+  </dialog>
+
+  <div class="toasts" id="toasts" aria-live="polite"></div>
+  <noscript><p class="noscript">SliceEngine needs JavaScript enabled.</p></noscript>
+  <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.venv/
+venv/
+
+# SliceEngine runtime & media outputs
+.cache/
+clips/
+uploads/
+*.mp4
+*.mkv
+*.webm
+*.srt
+*.part
+*.ytdl
+
+# Editor / OS / temp artifacts
+.freebuff/
+.cloud-attachments/
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

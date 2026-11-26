@@ -1,0 +1,8 @@
+# SliceEngine requirements
+# System requirements (must be installed on PATH):
+#   - ffmpeg (GPL build recommended, includes ffprobe)
+#   - yt-dlp (Python package, also has standalone executable)
+
+# Optional Python packages:
+ffmpeg-python>=0.2.0
+yt-dlp>=2024.2.0
