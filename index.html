@@ -194,6 +194,18 @@
                 </div>
 
                 <div class="field tight">
+                  <div class="field-head">
+                    <span class="field-label">Caption size</span>
+                    <output id="caption-size-out">Medium</output>
+                  </div>
+                  <div class="segmented wide" id="caption-size" role="group" aria-label="Caption size">
+                    <button type="button" data-size="small" aria-pressed="false">Small</button>
+                    <button type="button" data-size="medium" aria-pressed="true">Medium</button>
+                    <button type="button" data-size="large" aria-pressed="false">Large</button>
+                  </div>
+                </div>
+
+                <div class="field tight">
                   <label class="field-label" for="lang-select">Language</label>
                   <select id="lang-select">
                     <option value="en">English (en)</option>
@@ -214,6 +226,14 @@
                     <button class="style-chip" type="button" data-style="clean" aria-pressed="false" style="--sw:#9aa1b4"><i></i>Clean</button>
                     <button class="style-chip" type="button" data-style="hormozi" aria-pressed="false" style="--sw:#c6ff3d"><i></i>Hormozi</button>
                     <button class="style-chip" type="button" data-style="mrbeast" aria-pressed="false" style="--sw:#ffe14d"><i></i>MrBeast</button>
+                    <button class="style-chip" type="button" data-style="neon" aria-pressed="false" style="--sw:#45e6ff"><i></i>Neon</button>
+                    <button class="style-chip" type="button" data-style="podcast" aria-pressed="false" style="--sw:#fff5e1"><i></i>Podcast</button>
+                    <button class="style-chip" type="button" data-style="fire" aria-pressed="false" style="--sw:#ff5e3a"><i></i>Fire</button>
+                    <button class="style-chip" type="button" data-style="minimal" aria-pressed="false" style="--sw:#eef0f7"><i></i>Minimal</button>
+                  </div>
+                  <div class="caption-preview" id="caption-preview" aria-live="polite">
+                    <canvas id="caption-preview-canvas" width="520" height="120"></canvas>
+                    <span class="caption-preview-tag" id="caption-preview-tag">GTA · Burned in</span>
                   </div>
                 </div>
               </div>

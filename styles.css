@@ -525,6 +525,34 @@ select option { background: #11131b; }
 body.captions-off #caption-options { opacity: 0.38; pointer-events: none; filter: saturate(0.2); }
 body.captions-off .caption-card { border-color: rgba(255, 255, 255, 0.05); }
 body.captions-off .caption-card-top b { color: var(--muted); }
+.caption-preview {
+  position: relative;
+  margin-top: 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  overflow: hidden;
+  background:
+    radial-gradient(120% 130% at 20% 0%, rgba(154, 123, 255, 0.18), transparent 60%),
+    radial-gradient(100% 120% at 85% 100%, rgba(69, 230, 255, 0.12), transparent 60%),
+    #080a10;
+}
+#caption-preview-canvas {
+  display: block;
+  width: 100%;
+  height: 78px;
+}
+.caption-preview-tag {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  padding: 2px 6px;
+  border-radius: 5px;
+  background: rgba(5, 7, 12, 0.78);
+  color: var(--muted);
+  font-size: 10px;
+  letter-spacing: 0.02em;
+  pointer-events: none;
+}
 
 /* switch row (live) */
 .switch-row {

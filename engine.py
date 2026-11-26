@@ -462,12 +462,126 @@ def analyze(url: str, want_preview: bool = False) -> dict:
     }
 
 
-def fetch_subs(url: str, work: Path) -> Path | None:
+_WHISPER_LOCK = threading.Lock()
+_WHISPER_MODEL = None
+
+
+def get_whisper_model(size: str = "base"):
+    global _WHISPER_MODEL
+    with _WHISPER_LOCK:
+        if _WHISPER_MODEL is None:
+            from faster_whisper import WhisperModel
+            _WHISPER_MODEL = WhisperModel(size, device="cpu", compute_type="int8")
+        return _WHISPER_MODEL
+
+
+def make_ass_ts(t: float) -> str:
+    t = max(0.0, t)
+    h = int(t // 3600)
+    m = int((t % 3600) // 60)
+    s = int(t % 60)
+    cs = int(round((t - int(t)) * 100))
+    if cs >= 100:
+        s, cs = s + 1, 0
+    return f"{h}:{m:02d}:{s:02d}.{cs:02d}"
+
+
+def esc_ass(text: str) -> str:
+    return (text or "").replace("\\", "\\\\").replace("{", "\\{").replace("}", "\\}")
+
+
+def transcribe_clip_captions(src: Path, seek: float = 0.0, duration: float = 0.0,
+                             lang: str = "en", max_words: int = 4) -> tuple[str, list[list[tuple[float, float, str]]]]:
+    """Transcribe a clip window locally with faster-whisper word timestamps.
+    Returns (srt_text, word_chunks).
+    """
+    if not FFMPEG or not src.exists():
+        return "", []
+    wav = src.parent / f"cap_{uuid.uuid4().hex[:8]}.wav"
+    try:
+        cmd = [FFMPEG, "-y", "-hide_banner", "-loglevel", "error"]
+        if seek > 0:
+            cmd += ["-ss", f"{seek:.3f}"]
+        cmd += ["-i", str(src)]
+        if duration > 0:
+            cmd += ["-t", f"{duration:.3f}"]
+        cmd += ["-vn", "-ac", "1", "-ar", "16000", "-f", "wav", str(wav)]
+        code, _, _ = run(cmd, timeout=180)
+        if code != 0 or not wav.exists() or wav.stat().st_size < 1024:
+            return "", []
+
+        model = get_whisper_model()
+        segments, _ = model.transcribe(
+            str(wav),
+            language=(lang or "en").split("-")[0] or None,
+            beam_size=5,
+            vad_filter=True,
+            word_timestamps=True,
+        )
+        words: list[tuple[float, float, str]] = []
+        for seg in segments:
+            seg_words = getattr(seg, "words", None)
+            if seg_words:
+                for w in seg_words:
+                    tok = (w.word or "").strip()
+                    if tok:
+                        words.append((float(w.start), float(w.end), tok))
+            else:
+                txt = (seg.text or "").strip()
+                if txt:
+                    words.append((float(seg.start), float(seg.end), txt))
+
+        if not words:
+            return "", []
+
+        chunks: list[list[tuple[float, float, str]]] = []
+        buf: list[tuple[float, float, str]] = []
+        for w_start, w_end, tok in words:
+            if buf:
+                gap = w_start - buf[-1][1]
+                cur_len = sum(len(x[2]) + 1 for x in buf) + len(tok)
+                if gap > 0.45 or len(buf) >= max_words or cur_len > 28:
+                    chunks.append(buf)
+                    buf = []
+            buf.append((w_start, w_end, tok))
+            if tok.endswith((".", "!", "?")):
+                chunks.append(buf)
+                buf = []
+        if buf:
+            chunks.append(buf)
+
+        blocks = []
+        for i, chunk in enumerate(chunks):
+            a, b = chunk[0][0], chunk[-1][1]
+            if b - a < 0.25:
+                b = a + 0.25
+            line = " ".join(x[2] for x in chunk)
+            blocks.append(f"{i + 1}\n{make_ts(a)} --> {make_ts(b)}\n{line}")
+        return "\n\n".join(blocks) + ("\n" if blocks else ""), chunks
+    except Exception:  # noqa: BLE001
+        return "", []
+    finally:
+        try:
+            if wav.exists():
+                wav.unlink()
+        except OSError:
+            pass
+
+
+def transcribe_clip_srt(src: Path, seek: float = 0.0, duration: float = 0.0,
+                        lang: str = "en", max_words: int = 4) -> str:
+    srt_text, _ = transcribe_clip_captions(src, seek, duration, lang, max_words)
+    return srt_text
+
+
+def fetch_subs(url: str, work: Path, lang: str = "en") -> Path | None:
     if not YTDLP:
         return None
+    clean_lang = re.sub(r"[^a-zA-Z0-9_-]", "", lang or "en") or "en"
+    sub_langs = f"{clean_lang}.*,{clean_lang},en.*,en" if clean_lang != "en" else "en.*,en"
     run(
         [YTDLP, "--skip-download", "--no-playlist", "--no-warnings",
-         "--write-auto-subs", "--write-subs", "--sub-langs", "en.*,en",
+         "--write-auto-subs", "--write-subs", "--sub-langs", sub_langs,
          "--convert-subs", "srt", "-o", str(work / "src.%(ext)s"), url],
         timeout=300,
     )
@@ -654,7 +768,87 @@ def resolve_layout(layout: str, region: dict) -> str:
         return "gameplay"
 
 
-def vertical_filter(layout: str, region: dict, srt_name: str | None = None):
+CAPTION_SIZE_SCALE = {"small": 0.78, "medium": 1.0, "large": 1.28}
+
+ASS_STYLE_DEFS = {
+    "gta":     {"font": "Arial Black", "size": 68, "primary": "&H002EFFB7", "hi": "&H00FFFFFF", "outline": "&H000A1206", "back": "&H00000000", "bs": 1, "ow": 6, "sh": 2, "bold": -1},
+    "impact":  {"font": "Impact",      "size": 72, "primary": "&H00FFFFFF", "hi": "&H003EFFA5", "outline": "&H00000000", "back": "&H00000000", "bs": 1, "ow": 6, "sh": 0, "bold": -1},
+    "clean":   {"font": "Arial",       "size": 58, "primary": "&H00FFFFFF", "hi": "&H003EFFA5", "outline": "&HBC100A08", "back": "&HBC100A08", "bs": 3, "ow": 14, "sh": 0, "bold": -1},
+    "hormozi": {"font": "Arial Black", "size": 58, "primary": "&H000A1208", "hi": "&H00FFFFFF", "outline": "&H003DFFC6", "back": "&H003DFFC6", "bs": 3, "ow": 14, "sh": 0, "bold": -1},
+    "mrbeast": {"font": "Impact",      "size": 72, "primary": "&H004DE1FF", "hi": "&H00FFE645", "outline": "&H00000F1A", "back": "&H00000000", "bs": 1, "ow": 6, "sh": 2, "bold": -1},
+    "neon":    {"font": "Arial Black", "size": 68, "primary": "&H00FFE645", "hi": "&H004DE1FF", "outline": "&H00120804", "back": "&H00000000", "bs": 1, "ow": 6, "sh": 2, "bold": -1},
+    "podcast": {"font": "Arial",       "size": 58, "primary": "&H00E1F5FF", "hi": "&H004DB8FF", "outline": "&HCC141210", "back": "&HCC141210", "bs": 3, "ow": 14, "sh": 0, "bold": -1},
+    "fire":    {"font": "Impact",      "size": 72, "primary": "&H003A5EFF", "hi": "&H004DE1FF", "outline": "&H0000081A", "back": "&H00000000", "bs": 1, "ow": 6, "sh": 2, "bold": -1},
+    "minimal": {"font": "Arial",       "size": 54, "primary": "&H00F7F0EE", "hi": "&H003EFFA5", "outline": "&H00000000", "back": "&H00000000", "bs": 1, "ow": 4, "sh": 0, "bold": 0},
+}
+
+
+def ass_header(cap_style: str = "gta", cap_size: str = "medium", layout: str = "gameplay") -> tuple[str, dict]:
+    st = ASS_STYLE_DEFS.get(cap_style, ASS_STYLE_DEFS["gta"])
+    scale = CAPTION_SIZE_SCALE.get(str(cap_size or "medium").lower(), 1.0)
+    fsize = max(28, int(round(st["size"] * scale)))
+    # In 'full' layout (16:9 centered in 1080x1920), video spans y=656..1264.
+    # MarginV=520 places captions at y~1400, in the blurred bottom area just below the gameplay.
+    margin_v = 520 if layout == "full" else (300 if cap_style == "minimal" else 360)
+    header = "\n".join([
+        "[Script Info]",
+        "ScriptType: v4.00+",
+        "PlayResX: 1080",
+        "PlayResY: 1920",
+        "WrapStyle: 1",
+        "",
+        "[V4+ Styles]",
+        "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, "
+        "Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, "
+        "Alignment, MarginL, MarginR, MarginV, Encoding",
+        f"Style: Default,{st['font']},{fsize},{st['primary']},{st['hi']},{st['outline']},{st['back']},"
+        f"{st['bold']},0,0,0,100,100,0,0,{st['bs']},{st['ow']},{st['sh']},2,60,60,{margin_v},1",
+        "",
+        "[Events]",
+        "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text",
+    ])
+    return header, st
+
+
+def build_ass_from_chunks(chunks: list[list[tuple[float, float, str]]],
+                          cap_style: str = "gta", cap_size: str = "medium", layout: str = "gameplay") -> str:
+    if not chunks:
+        return ""
+    header, st = ass_header(cap_style, cap_size, layout)
+    hi = st["hi"]
+    events: list[str] = []
+    for chunk in chunks:
+        c_end = max(chunk[-1][1], chunk[0][0] + 0.25)
+        for idx, (w_start, w_end, _tok) in enumerate(chunk):
+            ev_start = w_start
+            ev_end = chunk[idx + 1][0] if idx + 1 < len(chunk) else c_end
+            if ev_end <= ev_start:
+                ev_end = max(w_end, ev_start + 0.12)
+            parts = []
+            for j, (_, _, word) in enumerate(chunk):
+                safe = esc_ass(word)
+                if j == idx:
+                    parts.append(f"{{\\c{hi}\\b1\\fscx108\\fscy108}}{safe}{{\\r}}")
+                else:
+                    parts.append(safe)
+            events.append(f"Dialogue: 0,{make_ass_ts(ev_start)},{make_ass_ts(ev_end)},Default,,0,0,0,,{' '.join(parts)}")
+    return header + "\n" + "\n".join(events) + "\n"
+
+
+def build_ass_from_srt(srt_text: str, cap_style: str = "gta", cap_size: str = "medium", layout: str = "gameplay") -> str:
+    if not (srt_text or "").strip():
+        return ""
+    header, _ = ass_header(cap_style, cap_size, layout)
+    events: list[str] = []
+    for match in SRT_BLOCK.finditer(srt_text.replace("\r\n", "\n")):
+        a, b = parse_ts(match.group(2)), parse_ts(match.group(3))
+        body = " ".join(part.strip() for part in match.group(4).split("\n") if part.strip())
+        if body:
+            events.append(f"Dialogue: 0,{make_ass_ts(a)},{make_ass_ts(b)},Default,,0,0,0,,{esc_ass(body)}")
+    return (header + "\n" + "\n".join(events) + "\n") if events else ""
+
+
+def vertical_filter(layout: str, region: dict, sub_name: str | None = None):
     cam = crop_expr(region)
     blur = ("scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,"
             "scale=270:480,gblur=sigma=7,scale=1080:1920")
@@ -684,28 +878,39 @@ def vertical_filter(layout: str, region: dict, srt_name: str | None = None):
             "[bg][cam]overlay=56:1536:format=auto[v]",
         ]
 
-    if srt_name:
-        style = ("FontSize=17,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,"
-                 "BorderStyle=1,Outline=3,Shadow=0,Alignment=2,MarginV=110,Bold=1")
-        parts.append(f"[v]subtitles={srt_name}:force_style='{style}'[vo]")
+    if sub_name:
+        if sub_name.endswith(".ass"):
+            parts.append(f"[v]ass={sub_name}[vo]")
+        else:
+            parts.append(f"[v]subtitles={sub_name}[vo]")
         return ";".join(parts), "[vo]"
     return ";".join(parts), "[v]"
 
 
 def render_clip(src: Path, out_dir: Path, name: str, seek: float, duration: float,
-                layout: str, region: dict, srt_text: str = "") -> Path:
+                layout: str, region: dict, srt_text: str = "", ass_text: str = "") -> Path:
     if not FFMPEG:
         raise RuntimeError("ffmpeg is not installed")
 
-    srt_name = None
+    sub_name = None
+    ass_file = out_dir / "captions.ass"
     srt_file = out_dir / "captions.srt"
-    if srt_text:
+    if ass_text:
+        ass_file.write_text(ass_text, encoding="utf-8")
+        sub_name = "captions.ass"
+        if srt_file.exists():
+            srt_file.unlink()
+    elif srt_text:
         srt_file.write_text(srt_text, encoding="utf-8")
-        srt_name = "captions.srt"
-    elif srt_file.exists():
-        srt_file.unlink()
+        sub_name = "captions.srt"
+        if ass_file.exists():
+            ass_file.unlink()
+    else:
+        for f in (ass_file, srt_file):
+            if f.exists():
+                f.unlink()
 
-    fc, vout = vertical_filter(layout, region, srt_name)
+    fc, vout = vertical_filter(layout, region, sub_name)
     # Fix A/V sync: -itsoffset is an input option; place it before -i so ffmpeg
     # applies the timestamp offset to the source before the filter graph runs.
     cmd = [FFMPEG, "-y", "-hide_banner", "-loglevel", "error"]
@@ -843,6 +1048,9 @@ def run_job(job_id: str, payload: dict):
         caps = payload.get("captions") or {}
         want_caps = bool(caps.get("on", True))
         cap_mode = str(caps.get("mode") or "burn")
+        cap_style = str(caps.get("style") or "gta")
+        cap_size = str(caps.get("size") or "medium")
+        cap_lang = str(caps.get("lang") or "en")
 
         src_path: Path | None = None
         preview = None
@@ -891,7 +1099,7 @@ def run_job(job_id: str, payload: dict):
         srt_text = ""
         if want_caps and src_path is None:
             set_stage(job, "plan", "Fetching captions", 42)
-            sub_file = fetch_subs(url, work)
+            sub_file = fetch_subs(url, work, cap_lang)
             if sub_file:
                 srt_text = sub_file.read_text(encoding="utf-8", errors="replace")
 
@@ -919,10 +1127,19 @@ def run_job(job_id: str, payload: dict):
             if part is None:
                 raise RuntimeError(f"download failed for clip {i + 1}")
 
-            srt_slice = slice_srt(srt_text, start, end) if (srt_text and want_caps) else ""
+            srt_slice, ass_slice = "", ""
+            if want_caps:
+                set_stage(job, "cut", f"Transcribing clip {i + 1} of {len(windows)}",
+                          58 + int(40 * i / max(1, len(windows))))
+                srt_slice, chunks = transcribe_clip_captions(part, seek, length, lang=cap_lang)
+                if chunks:
+                    ass_slice = build_ass_from_chunks(chunks, cap_style, cap_size, chosen_layout)
+                elif srt_text:
+                    srt_slice = slice_srt(srt_text, start, end)
+                    ass_slice = build_ass_from_srt(srt_slice, cap_style, cap_size, chosen_layout)
             name = f"clip-{i + 1}.mp4"
             render_clip(part, out_dir, name, seek, length, chosen_layout, clip_region,
-                        srt_slice if burn_ok else "")
+                        srt_slice if burn_ok else "", ass_slice if burn_ok else "")
 
             entry = {
                 "file": f"/clips/{job_id}/{name}",
@@ -1206,11 +1423,29 @@ def live_render(session: dict, item: dict) -> None:
     name = f"{item['id']}.mp4"
     layout = str(session.get("layout") or "gameplay")
     region = clean_region(item.get("region") or {})
+    caps = session.get("captions") or {}
+    want_caps = bool(caps.get("on", True))
+    cap_mode = str(caps.get("mode") or "burn")
+    cap_style = str(caps.get("style") or "gta")
+    cap_size = str(caps.get("size") or "medium")
+    cap_lang = str(caps.get("lang") or "en")
+    burn_ok = want_caps and cap_mode == "burn" and has_subtitle_filter()
+
+    srt_slice, ass_slice = "", ""
+    if want_caps:
+        with LIVE_LOCK:
+            item["status"] = "cutting"
+            item["label"] = "Transcribing captions"
+        srt_slice, chunks = transcribe_clip_captions(src, 0.0, max(1.0, float(item["length"])), lang=cap_lang)
+        if chunks:
+            ass_slice = build_ass_from_chunks(chunks, cap_style, cap_size, layout)
+
     with LIVE_LOCK:
         item["status"] = "cutting"
         item["label"] = "Cutting the clip"
     try:
-        render_clip(src, out_dir, name, 0.0, max(1.0, float(item["length"])), layout, region, "")
+        render_clip(src, out_dir, name, 0.0, max(1.0, float(item["length"])), layout, region,
+                    srt_slice if burn_ok else "", ass_slice if burn_ok else "")
     except Exception as exc:  # noqa: BLE001
         with LIVE_LOCK:
             item["status"] = "error"
@@ -1227,9 +1462,13 @@ def live_render(session: dict, item: dict) -> None:
         "end": round(float(item.get("at") or 0) + float(item["length"]), 1),
         "score": 90,
         "layout": layout,
-        "burnedCaptions": False,
+        "burnedCaptions": bool(burn_ok and srt_slice),
         "live": True,
     }
+    if srt_slice:
+        srt_name = f"{item['id']}.srt"
+        (out_dir / srt_name).write_text(srt_slice, encoding="utf-8")
+        entry["srt"] = f"/clips/live-{session['id']}/{srt_name}"
     with LIVE_LOCK:
         item["status"] = "ready"
         item["file"] = entry["file"]

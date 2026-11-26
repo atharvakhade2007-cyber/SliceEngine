@@ -62,7 +62,7 @@ SliceEngine runs 100% locally on your machine (no cloud servers or external AI/L
 - **Studio mode**: Paste a YouTube/Twitch/Kick URL, select caption length and layout, review facecam box, get auto-captured clips
 - **Live mode**: Watch live streams, capture clips on-the-fly with per-clip approval gate
 - **Facecam detection**: Heuristic corner-detection to guess webcam box position
-- **Auto-captions**: SRT parsing and burn-in or sidecar subtitle files
+- **Auto-captions**: Local `faster-whisper` speech-to-text with word-level timestamps (plus `yt-dlp` subtitle fallback), 9 burn-in styles (`GTA`, `Impact`, `Clean`, `Hormozi`, `MrBeast`, `Neon`, `Podcast`, `Fire`, `Minimal`), and `.srt` sidecar export
 - **Platform-aware clipping**: Different max lengths for TikTok (180s), Reels (90s), Shorts (60s)
 - **Cache management**: Clear storage, single-file delete for `clips/` and `uploads/`
 - **Notification system**: Bell/toast system replaces legacy `toast()` calls
@@ -172,10 +172,6 @@ python engine.py
 | Clips have no audio | Some live streams video-only; the engine pulls a separate audio rendition if available |
 | "could not read a frame" | Video may have DRM or the URL may have expired |
 | Storage panel shows large .cache | Use the "Clear storage" button; this deletes temp files inside `.cache/` |
-
-## Known Issues
-
-- **Captions**: Caption fetching currently relies on `yt-dlp` downloading existing or auto-generated English (`en.*,en`) subtitles from the source URL. If a video, ended stream, local file, or live stream does not have available subtitles (or uses another language), captions will be skipped. Custom caption styles (`GTA`, `Hormozi`, `MrBeast`, etc.) also do not yet map to `ffmpeg` burn-in styling. There is a known issue with captions that will be fixed in later versions (e.g. with local speech-to-text / Whisper fallback and full style support).
 
 ## License
 

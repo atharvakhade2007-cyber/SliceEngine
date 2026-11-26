@@ -101,6 +101,7 @@
     layout: 'auto',
     preset: 'reels',
     captionStyle: 'gta',
+    captionSize: 'medium',
     language: 'en',
     autoClip: true,
     sensitivity: 2.5,
@@ -158,12 +159,17 @@
   ];
 
   const CAPTION_STYLES = {
-    gta: { font: '"Arial Black", Impact, system-ui, sans-serif', weight: 900, size: 44, color: '#b7ff2e', stroke: '#06120a', strokeWidth: 9, glow: 'rgba(183,255,46,.5)' },
-    impact: { font: 'Impact, "Arial Black", system-ui, sans-serif', weight: 700, size: 48, color: '#ffffff', stroke: '#000000', strokeWidth: 9 },
-    clean: { font: 'Inter, system-ui, sans-serif', weight: 700, size: 31, color: '#ffffff', box: 'rgba(8,10,16,.74)' },
-    hormozi: { font: 'Inter, system-ui, sans-serif', weight: 900, size: 29, color: '#08120a', box: '#c6ff3d' },
-    mrbeast: { font: 'Impact, "Arial Black", system-ui, sans-serif', weight: 700, size: 46, color: '#ffe14d', stroke: '#1a0f00', strokeWidth: 9 },
+    gta: { font: '"Arial Black", Impact, system-ui, sans-serif', weight: 900, size: 44, color: '#b7ff2e', hi: '#ffffff', stroke: '#06120a', strokeWidth: 9, glow: 'rgba(183,255,46,.5)' },
+    impact: { font: 'Impact, "Arial Black", system-ui, sans-serif', weight: 700, size: 48, color: '#ffffff', hi: '#a5ff3e', stroke: '#000000', strokeWidth: 9 },
+    clean: { font: 'Inter, system-ui, sans-serif', weight: 700, size: 31, color: '#ffffff', hi: '#a5ff3e', box: 'rgba(8,10,16,.74)' },
+    hormozi: { font: 'Inter, system-ui, sans-serif', weight: 900, size: 29, color: '#08120a', hi: '#ffffff', box: '#c6ff3d' },
+    mrbeast: { font: 'Impact, "Arial Black", system-ui, sans-serif', weight: 700, size: 46, color: '#ffe14d', hi: '#45e6ff', stroke: '#1a0f00', strokeWidth: 9 },
+    neon: { font: '"Arial Black", Impact, system-ui, sans-serif', weight: 900, size: 44, color: '#45e6ff', hi: '#ffe14d', stroke: '#040812', strokeWidth: 9, glow: 'rgba(69,230,255,.55)' },
+    podcast: { font: 'Inter, system-ui, sans-serif', weight: 700, size: 30, color: '#fff5e1', hi: '#ffb84d', box: 'rgba(16,18,20,.84)' },
+    fire: { font: 'Impact, "Arial Black", system-ui, sans-serif', weight: 800, size: 46, color: '#ff5e3a', hi: '#ffe14d', stroke: '#1a0800', strokeWidth: 9, glow: 'rgba(255,94,58,.45)' },
+    minimal: { font: 'Inter, system-ui, sans-serif', weight: 600, size: 30, color: '#eef0f7', hi: '#a5ff3e', stroke: '#000000', strokeWidth: 5 },
   };
+  const CAPTION_SIZE_SCALE = { small: 0.78, medium: 1.0, large: 1.24 };
 
   /* ───────────────────────── notifications ───────────────────────── */
   const notifications = [];
@@ -902,6 +908,96 @@
   }
 
   /* ───────────────────────── captions ───────────────────────── */
+  function drawCaptionPreview() {
+    const canvas = $('#caption-preview-canvas');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    const W = canvas.width;
+    const H = canvas.height;
+    ctx.clearRect(0, 0, W, H);
+
+    // subtle video-frame backdrop
+    const bg = ctx.createLinearGradient(0, 0, W, H);
+    bg.addColorStop(0, '#121624');
+    bg.addColorStop(0.5, '#0c0f18');
+    bg.addColorStop(1, '#101826');
+    ctx.fillStyle = bg;
+    ctx.fillRect(0, 0, W, H);
+
+    // faint grid lines to suggest a video frame
+    ctx.strokeStyle = 'rgba(255,255,255,0.04)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(0, H / 2);
+    ctx.lineTo(W, H / 2);
+    ctx.moveTo(W / 2, 0);
+    ctx.lineTo(W / 2, H);
+    ctx.stroke();
+
+    const styleKey = state.settings.captionStyle || 'gta';
+    const st = CAPTION_STYLES[styleKey] || CAPTION_STYLES.gta;
+    const on = state.settings.captions;
+    const mode = state.settings.captionMode === 'srt' ? 'srt' : 'burn';
+
+    const tag = $('#caption-preview-tag');
+    if (tag) {
+      const label = styleKey === 'gta' ? 'GTA'
+        : styleKey === 'mrbeast' ? 'MrBeast'
+          : styleKey.charAt(0).toUpperCase() + styleKey.slice(1);
+      tag.textContent = !on ? 'Captions off' : mode === 'srt' ? `${label} · .srt sidecar` : `${label} · Burned in`;
+    }
+
+    if (!on) {
+      ctx.fillStyle = 'rgba(255,255,255,0.35)';
+      ctx.font = '600 14px Inter, system-ui, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('Captions are turned off', W / 2, H / 2);
+      return;
+    }
+
+    const sample = 'THIS IS HOW CAPTIONS LOOK';
+    const scale = CAPTION_SIZE_SCALE[state.settings.captionSize] || 1.0;
+    const scaledSize = Math.round(st.size * 0.56 * scale);
+    ctx.save();
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.font = `${st.weight} ${scaledSize}px ${st.font}`;
+    const cx = W / 2;
+    const cy = H * 0.56;
+    const width = ctx.measureText(sample).width;
+
+    if (st.box) {
+      const bw = width + 24;
+      const bh = scaledSize + 14;
+      ctx.fillStyle = st.box;
+      roundRect(ctx, cx - bw / 2, cy - bh / 2, bw, bh, 7);
+      ctx.fill();
+    }
+    const parts = [
+      { text: 'THIS IS HOW ', hi: false },
+      { text: 'CAPTIONS', hi: true },
+      { text: ' LOOK', hi: false },
+    ];
+    let cursor = cx - width / 2;
+    ctx.textAlign = 'left';
+    for (const part of parts) {
+      const pw = ctx.measureText(part.text).width;
+      if (st.stroke) {
+        ctx.lineJoin = 'round';
+        ctx.lineWidth = Math.max(3, Math.round((st.strokeWidth || 6) * 0.58 * scale));
+        ctx.strokeStyle = st.stroke;
+        ctx.strokeText(part.text, cursor, cy);
+      }
+      ctx.shadowColor = st.glow || 'transparent';
+      ctx.shadowBlur = st.glow ? 12 : 0;
+      ctx.fillStyle = part.hi ? (st.hi || '#ffffff') : st.color;
+      ctx.fillText(part.text, cursor, cy);
+      cursor += pw;
+    }
+    ctx.restore();
+  }
+
   function applyCaptions() {
     const on = state.settings.captions;
     const mode = state.settings.captionMode === 'srt' ? 'srt' : 'burn';
@@ -925,6 +1021,7 @@
 
     updateResultsMeta();
     if (state.liveClips.length) renderLiveClips();
+    drawCaptionPreview();
   }
 
   function setCaptions(on) {
@@ -1519,7 +1616,13 @@
           url: raw,
           layout: reviewLayout(),
           facecam: state.settings.facecam,
-          captions: { on: state.settings.captions, mode: state.settings.captionMode },
+          captions: {
+            on: state.settings.captions,
+            mode: state.settings.captionMode,
+            style: state.settings.captionStyle,
+            size: state.settings.captionSize,
+            lang: state.settings.language,
+          },
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -2498,6 +2601,7 @@
             on: settings.captions,
             mode: settings.captionMode,
             style: settings.captionStyle,
+            size: settings.captionSize,
             lang: settings.language,
           },
         }),
@@ -2666,6 +2770,10 @@
     $('#layout-select').value = s.layout;
     $('#lang-select').value = s.language;
     $$('#style-chips .style-chip').forEach((btn) => btn.setAttribute('aria-pressed', String(btn.dataset.style === s.captionStyle)));
+    const capSize = s.captionSize || 'medium';
+    $$('#caption-size button').forEach((btn) => btn.setAttribute('aria-pressed', String(btn.dataset.size === capSize)));
+    const capSizeOut = $('#caption-size-out');
+    if (capSizeOut) capSizeOut.textContent = capSize.charAt(0).toUpperCase() + capSize.slice(1);
     $('#live-layout').value = s.layout;
     $('#live-auto').checked = s.autoClip;
     $('#live-sensitivity').value = String(s.sensitivity);
@@ -2831,6 +2939,7 @@
           const clip = findClip(canvas.dataset.clip);
           if (clip) drawPoster(canvas, { ...clip, style: state.settings.captionStyle });
         });
+        drawCaptionPreview();
       });
     });
 
@@ -2848,6 +2957,15 @@
           return;
         }
         setCaptionMode(btn.dataset.mode);
+      });
+    });
+
+    $$('#caption-size button').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        state.settings.captionSize = btn.dataset.size || 'medium';
+        persistSettings();
+        syncControls();
+        drawCaptionPreview();
       });
     });
 
